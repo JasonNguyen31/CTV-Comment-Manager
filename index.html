@@ -13,11 +13,42 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo } = React;
+        const { useState, useMemo, useEffect } = React;
 
         const CommentManager = () => {
             const [selectedCTV, setSelectedCTV] = useState(null);
             const [expandedSections, setExpandedSections] = useState({});
+            const [completedComments, setCompletedComments] = useState({});
+            const [comments, setComments] = useState({});
+
+            // Load data từ localStorage khi component mount
+            useEffect(() => {
+                try {
+                    const savedCompleted = JSON.parse(window.localStorage?.getItem('ctvCompletedComments') || '{}');
+                    const savedComments = JSON.parse(window.localStorage?.getItem('ctvComments') || '{}');
+                    setCompletedComments(savedCompleted);
+                    setComments(savedComments);
+                } catch (error) {
+                    console.log('Không thể load dữ liệu từ localStorage');
+                }
+            }, []);
+
+            // Save data vào localStorage khi có thay đổi
+            useEffect(() => {
+                try {
+                    window.localStorage?.setItem('ctvCompletedComments', JSON.stringify(completedComments));
+                } catch (error) {
+                    console.log('Không thể lưu completed comments');
+                }
+            }, [completedComments]);
+
+            useEffect(() => {
+                try {
+                    window.localStorage?.setItem('ctvComments', JSON.stringify(comments));
+                } catch (error) {
+                    console.log('Không thể lưu comments');
+                }
+            }, [comments]);
 
             const ctvData = [
                 { id: 1, name: "Bảo Huân", nicks: ["Trọng hoàng", "Baby kajima", "Hachthieuhoang"] },
@@ -77,10 +108,81 @@
                 }));
             };
 
+            const handleCheckboxChange = (commenterId, targetId, videoIndex) => {
+                const key = `${commenterId}-${targetId}-${videoIndex}`;
+                setCompletedComments(prev => ({
+                    ...prev,
+                    [key]: !prev[key]
+                }));
+            };
+
+            const handleCommentChange = (commenterId, targetId, videoIndex, value) => {
+                const key = `${commenterId}-${targetId}-${videoIndex}`;
+                setComments(prev => ({
+                    ...prev,
+                    [key]: value
+                }));
+            };
+
+            const exportData = () => {
+                const exportData = [];
+                const targetCtv = ctvData.find(c => c.id === selectedCTV);
+                
+                getCommenters(selectedCTV).forEach(commenterId => {
+                    const commenterCtv = ctvData.find(c => c.id === commenterId);
+                    
+                    commenterCtv?.nicks.slice(0, 3).forEach((nick, videoIndex) => {
+                        const key = `${commenterId}-${selectedCTV}-${videoIndex}`;
+                        const isCompleted = completedComments[key];
+                        
+                        if (!isCompleted) {
+                            exportData.push({
+                                'CTV Comment': commenterCtv.name,
+                                'Nick Comment': nick,
+                                'Video': `Video ${videoIndex + 1}`,
+                                'CTV Được Comment': targetCtv?.name,
+                                'Nick Được Comment': targetCtv?.nicks[videoIndex] || '',
+                                'Ghi Chú': comments[key] || ''
+                            });
+                        }
+                    });
+                });
+
+                // Tạo CSV content
+                const csvContent = exportData.map(row => 
+                    Object.values(row).map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(',')
+                ).join('\n');
+                
+                const headers = Object.keys(exportData[0] || {}).map(h => `"${h}"`).join(',');
+                const fullCsvContent = headers + '\n' + csvContent;
+
+                // Tạo file download
+                const blob = new Blob(['\ufeff' + fullCsvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', `CTV_${targetCtv?.name}_Comments_${new Date().toISOString().split('T')[0]}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
             const totalCommentsPerVideo = 10;
             const totalCommentsPerCTV = totalCommentsPerVideo * 3;
 
-            return React.createElement('div', { className: "max-w-6xl mx-auto p-6 bg-gray-50 min-h-screen" },
+            const getCompletedCount = (targetCtvId) => {
+                let completed = 0;
+                getCommenters(targetCtvId).forEach(commenterId => {
+                    for (let i = 0; i < 3; i++) {
+                        const key = `${commenterId}-${targetCtvId}-${i}`;
+                        if (completedComments[key]) completed++;
+                    }
+                });
+                return completed;
+            };
+
+            return React.createElement('div', { className: "max-w-7xl mx-auto p-6 bg-gray-50 min-h-screen" },
                 React.createElement('div', { className: "bg-white rounded-lg shadow-lg p-6 mb-6" },
                     React.createElement('h1', { className: "text-2xl font-bold text-gray-800 mb-4 flex items-center" },
                         React.createElement('span', { className: "mr-2" }, '💬'),
@@ -126,8 +228,12 @@
                         ),
                         
                         (expandedSections.ctvList !== false) && React.createElement('div', { className: "space-y-2" },
-                            ctvData.map((ctv) =>
-                                React.createElement('div', {
+                            ctvData.map((ctv) => {
+                                const completedCount = getCompletedCount(ctv.id);
+                                const totalCount = getCommenters(ctv.id).length * 3;
+                                const completionPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+                                
+                                return React.createElement('div', {
                                     key: ctv.id,
                                     className: `p-3 rounded-lg cursor-pointer transition-all ${
                                         selectedCTV === ctv.id 
@@ -145,8 +251,17 @@
                                                 `(${ctv.nicks.length} nick${ctv.nicks.length > 1 ? 's' : ''})`
                                             )
                                         ),
-                                        React.createElement('span', { className: "text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded" },
-                                            `${totalCommentsPerCTV} cmt`
+                                        React.createElement('div', { className: "flex items-center space-x-2" },
+                                            React.createElement('span', { 
+                                                className: `text-xs px-2 py-1 rounded ${
+                                                    completionPercentage === 100 ? 'bg-green-100 text-green-800' :
+                                                    completionPercentage > 0 ? 'bg-yellow-100 text-yellow-800' :
+                                                    'bg-gray-100 text-gray-600'
+                                                }`
+                                            }, `${completionPercentage}%`),
+                                            React.createElement('span', { className: "text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded" },
+                                                `${totalCommentsPerCTV} cmt`
+                                            )
                                         )
                                     ),
                                     
@@ -166,82 +281,121 @@
                                             )
                                         )
                                     )
-                                )
-                            )
+                                );
+                            })
                         )
                     ),
 
                     // Chi tiết CTV được chọn
                     selectedCTV && React.createElement('div', { className: "bg-white rounded-lg shadow-lg p-6" },
-                        React.createElement('h2', { className: "text-xl font-semibold text-gray-800 mb-4" },
-                            `Chi tiết: ${ctvData.find(c => c.id === selectedCTV)?.name}`
+                        React.createElement('div', { className: "flex items-center justify-between mb-4" },
+                            React.createElement('h2', { className: "text-xl font-semibold text-gray-800" },
+                                `Chi tiết: ${ctvData.find(c => c.id === selectedCTV)?.name}`
+                            ),
+                            React.createElement('button', {
+                                onClick: exportData,
+                                className: "bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 transition-colors"
+                            },
+                                React.createElement('span', null, '📊'),
+                                React.createElement('span', null, 'Xuất Excel')
+                            )
                         ),
                         
                         React.createElement('div', { className: "space-y-4" },
-                            // CTV này sẽ comment ai
-                            React.createElement('div', { className: "bg-yellow-50 p-4 rounded-lg" },
-                                React.createElement('h3', { className: "font-medium text-yellow-800 mb-2" },
-                                    '🎯 CTV này sẽ comment cho:'
-                                ),
-                                React.createElement('div', { className: "space-y-2" },
-                                    getTargets(selectedCTV).map(targetId => {
-                                        const targetCtv = ctvData.find(c => c.id === targetId);
-                                        return React.createElement('div', {
-                                            key: targetId,
-                                            className: "bg-yellow-100 p-3 rounded"
-                                        },
-                                            React.createElement('div', { className: "text-sm font-medium text-yellow-800" },
-                                                `${targetId}. ${targetCtv?.name}`
-                                            ),
-                                            React.createElement('div', { className: "mt-2 text-xs text-yellow-700" },
-                                                React.createElement('strong', null, 'Video và nick tương ứng:')
-                                            ),
-                                            React.createElement('div', { className: "grid grid-cols-1 gap-1 mt-1" },
-                                                targetCtv?.nicks.slice(0, 3).map((nick, index) =>
-                                                    React.createElement('div', {
-                                                        key: index,
-                                                        className: "text-xs bg-yellow-200 text-yellow-800 px-2 py-1 rounded"
-                                                    }, `Video ${index + 1}: `, React.createElement('strong', null, nick))
-                                                )
-                                            )
-                                        );
-                                    })
-                                ),
-                                React.createElement('div', { className: "mt-3 text-sm text-yellow-700 bg-yellow-100 p-2 rounded" },
-                                    React.createElement('strong', null, 'Tổng kết: '),
-                                    `${getTargets(selectedCTV).length} CTV × 3 video = ${getTargets(selectedCTV).length * 3} comment cần thực hiện`
-                                )
-                            ),
-
-                            // Ai sẽ comment CTV này
+                            // Ai sẽ comment CTV này (với checkbox và comment)
                             React.createElement('div', { className: "bg-green-50 p-4 rounded-lg" },
-                                React.createElement('h3', { className: "font-medium text-green-800 mb-2" },
+                                React.createElement('h3', { className: "font-medium text-green-800 mb-3" },
                                     '💬 CTV này sẽ được comment bởi:'
                                 ),
-                                React.createElement('div', { className: "space-y-2" },
+                                React.createElement('div', { className: "space-y-3" },
                                     getCommenters(selectedCTV).map(commenterId => {
                                         const commenterCtv = ctvData.find(c => c.id === commenterId);
+                                        const targetCtv = ctvData.find(c => c.id === selectedCTV);
+                                        
                                         return React.createElement('div', {
                                             key: commenterId,
-                                            className: "bg-green-100 p-3 rounded"
+                                            className: "bg-green-100 p-4 rounded-lg"
                                         },
-                                            React.createElement('div', { className: "text-sm font-medium text-green-800" },
+                                            React.createElement('div', { className: "text-sm font-medium text-green-800 mb-3" },
                                                 `${commenterId}. ${commenterCtv?.name}`
                                             ),
-                                            React.createElement('div', { className: "mt-2 text-xs text-green-700" },
-                                                React.createElement('strong', null, 'Nick sử dụng:')
-                                            ),
-                                            React.createElement('div', { className: "flex flex-wrap gap-1 mt-1" },
-                                                commenterCtv?.nicks.slice(0, 3).map((nick, index) =>
-                                                    React.createElement('span', {
-                                                        key: index,
-                                                        className: "text-xs bg-green-200 text-green-800 px-2 py-1 rounded"
-                                                    }, nick)
-                                                )
+                                            
+                                            React.createElement('div', { className: "space-y-3" },
+                                                commenterCtv?.nicks.slice(0, 3).map((nick, videoIndex) => {
+                                                    const key = `${commenterId}-${selectedCTV}-${videoIndex}`;
+                                                    const isCompleted = completedComments[key] || false;
+                                                    const commentText = comments[key] || '';
+                                                    
+                                                    return React.createElement('div', {
+                                                        key: videoIndex,
+                                                        className: `bg-white p-3 rounded border ${isCompleted ? 'bg-gray-50 opacity-75' : ''}`
+                                                    },
+                                                        React.createElement('div', { className: "flex items-center space-x-3 mb-2" },
+                                                            React.createElement('input', {
+                                                                type: 'checkbox',
+                                                                id: `checkbox-${key}`,
+                                                                checked: isCompleted,
+                                                                onChange: () => handleCheckboxChange(commenterId, selectedCTV, videoIndex),
+                                                                className: "w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500 focus:ring-2"
+                                                            }),
+                                                            React.createElement('label', {
+                                                                htmlFor: `checkbox-${key}`,
+                                                                className: `text-sm font-medium cursor-pointer ${isCompleted ? 'text-gray-500 line-through' : 'text-gray-700'}`
+                                                            }, `Video ${videoIndex + 1}: ${nick} → ${targetCtv?.nicks[videoIndex] || ''}`)
+                                                        ),
+                                                        
+                                                        React.createElement('textarea', {
+                                                            placeholder: 'Ghi chú comment...',
+                                                            value: commentText,
+                                                            onChange: (e) => handleCommentChange(commenterId, selectedCTV, videoIndex, e.target.value),
+                                                            disabled: isCompleted,
+                                                            className: `w-full p-2 text-xs border border-gray-300 rounded-md resize-none ${
+                                                                isCompleted ? 'bg-gray-100 text-gray-500' : 'focus:ring-2 focus:ring-green-500 focus:border-transparent'
+                                                            }`,
+                                                            rows: 2
+                                                        })
+                                                    );
+                                                })
                                             )
                                         );
                                     })
                                 ),
+
+                                // CTV này sẽ comment ai
+                                React.createElement('div', { className: "bg-yellow-50 p-4 rounded-lg" },
+                                    React.createElement('h3', { className: "font-medium text-yellow-800 mb-2" },
+                                        '🎯 CTV này sẽ comment cho:'
+                                    ),
+                                    React.createElement('div', { className: "space-y-2" },
+                                        getTargets(selectedCTV).map(targetId => {
+                                            const targetCtv = ctvData.find(c => c.id === targetId);
+                                            return React.createElement('div', {
+                                                key: targetId,
+                                                className: "bg-yellow-100 p-3 rounded"
+                                            },
+                                                React.createElement('div', { className: "text-sm font-medium text-yellow-800" },
+                                                    `${targetId}. ${targetCtv?.name}`
+                                                ),
+                                                React.createElement('div', { className: "mt-2 text-xs text-yellow-700" },
+                                                    React.createElement('strong', null, 'Video và nick tương ứng:')
+                                                ),
+                                                React.createElement('div', { className: "grid grid-cols-1 gap-1 mt-1" },
+                                                    targetCtv?.nicks.slice(0, 3).map((nick, index) =>
+                                                        React.createElement('div', {
+                                                            key: index,
+                                                            className: "text-xs bg-yellow-200 text-yellow-800 px-2 py-1 rounded"
+                                                        }, `Video ${index + 1}: `, React.createElement('strong', null, nick))
+                                                    )
+                                                )
+                                            );
+                                        })
+                                    ),
+                                    React.createElement('div', { className: "mt-3 text-sm text-yellow-700 bg-yellow-100 p-2 rounded" },
+                                        React.createElement('strong', null, 'Tổng kết: '),
+                                        `${getTargets(selectedCTV).length} CTV × 3 video = ${getTargets(selectedCTV).length * 3} comment cần thực hiện`
+                                    )
+                                ),
+
                                 React.createElement('div', { className: "mt-3 text-sm text-green-700 bg-green-100 p-2 rounded" },
                                     React.createElement('strong', null, 'Tổng kết: '),
                                     `Mỗi video sẽ có ${getCommenters(selectedCTV).length} comment từ ${getCommenters(selectedCTV).length} CTV khác nhau`
@@ -257,7 +411,10 @@
                                     React.createElement('div', null, '• 3 video tương ứng với 3 nick đầu tiên'),
                                     React.createElement('div', null, `• Mỗi video nhận ${totalCommentsPerVideo} comment`),
                                     React.createElement('div', null, `• Tổng comment nhận được: ${totalCommentsPerVideo * 3} comment`),
-                                    React.createElement('div', null, `• Tổng comment phải thực hiện: ${totalCommentsPerCTV} comment`)
+                                    React.createElement('div', null, `• Tổng comment phải thực hiện: ${totalCommentsPerCTV} comment`),
+                                    React.createElement('div', { className: "font-medium text-blue-700" }, 
+                                        `• Hoàn thành: ${getCompletedCount(selectedCTV)}/${getCommenters(selectedCTV).length * 3} comment`
+                                    )
                                 )
                             )
                         )
@@ -300,7 +457,7 @@
                                 React.createElement('p', { className: "text-sm text-orange-800" },
                                     '💡 ',
                                     React.createElement('strong', null, 'Mẹo:'),
-                                    ' Nhấp vào bất kỳ CTV nào ở bên trái để xem chi tiết về việc họ sẽ comment cho ai và ai sẽ comment cho họ!'
+                                    ' Nhấp vào bất kỳ CTV nào ở bên trái để xem chi tiết. Đánh dấu checkbox khi hoàn thành comment và thêm ghi chú nếu cần. Bấm "Xuất Excel" để xuất danh sách các comment chưa hoàn thành!'
                                 )
                             )
                         )
