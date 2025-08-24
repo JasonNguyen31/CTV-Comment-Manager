@@ -406,41 +406,6 @@
                                 )
                             ),
 
-                            // CTV này sẽ comment ai
-                            React.createElement('div', { className: "bg-yellow-50 p-4 rounded-lg" },
-                                React.createElement('h3', { className: "font-medium text-yellow-800 mb-2" },
-                                    '🎯 CTV này sẽ comment cho:'
-                                ),
-                                React.createElement('div', { className: "space-y-2" },
-                                    getTargets(selectedCTV).map(targetId => {
-                                        const targetCtv = ctvData.find(c => c.id === targetId);
-                                        return React.createElement('div', {
-                                            key: targetId,
-                                            className: "bg-yellow-100 p-3 rounded"
-                                        },
-                                            React.createElement('div', { className: "text-sm font-medium text-yellow-800" },
-                                                `${targetId}. ${targetCtv?.name}`
-                                            ),
-                                            React.createElement('div', { className: "mt-2 text-xs text-yellow-700" },
-                                                React.createElement('strong', null, 'Video và nick tương ứng:')
-                                            ),
-                                            React.createElement('div', { className: "grid grid-cols-1 gap-1 mt-1" },
-                                                targetCtv?.nicks.slice(0, 3).map((nick, index) =>
-                                                    React.createElement('div', {
-                                                        key: index,
-                                                        className: "text-xs bg-yellow-200 text-yellow-800 px-2 py-1 rounded"
-                                                    }, `Video ${index + 1}: `, React.createElement('strong', null, nick))
-                                                )
-                                            )
-                                        );
-                                    })
-                                ),
-                                React.createElement('div', { className: "mt-3 text-sm text-yellow-700 bg-yellow-100 p-2 rounded" },
-                                    React.createElement('strong', null, 'Tổng kết: '),
-                                    `${getTargets(selectedCTV).length} CTV × 3 video = ${getTargets(selectedCTV).length * 3} comment cần thực hiện`
-                                )
-                            ),
-
                             // Thống kê video
                             React.createElement('div', { className: "bg-blue-50 p-4 rounded-lg" },
                                 React.createElement('h3', { className: "font-medium text-blue-800 mb-2" },
