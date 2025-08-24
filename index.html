@@ -165,20 +165,28 @@
             }, [ctvWarnings]);
 
             const getCommenters = (targetCtvId) => {
+                // Tìm vị trí thực tế của CTV trong mảng (không phải ID)
+                const targetCtvIndex = ctvData.findIndex(ctv => ctv.id === targetCtvId);
+                if (targetCtvIndex === -1) return [];
+                
+                const targetPosition = targetCtvIndex + 1; // Position bắt đầu từ 1
                 const commenters = [];
-                for (let i = 1; i <= systemConfig.totalCTV; i++) {
-                    let startId = i + 1;
-                    let endId = i + systemConfig.commentsPerVideo;
+                
+                for (let i = 0; i < systemConfig.totalCTV; i++) {
+                    const currentPosition = i + 1;
+                    let startPosition = currentPosition + 1;
+                    let endPosition = currentPosition + systemConfig.commentsPerVideo;
                     
-                    const targetIds = [];
-                    for (let j = startId; j <= endId; j++) {
-                        let actualId = j;
-                        if (j > systemConfig.totalCTV) actualId = j - systemConfig.totalCTV;
-                        targetIds.push(actualId);
+                    const targetPositions = [];
+                    for (let j = startPosition; j <= endPosition; j++) {
+                        let actualPosition = j;
+                        if (j > systemConfig.totalCTV) actualPosition = j - systemConfig.totalCTV;
+                        targetPositions.push(actualPosition);
                     }
                     
-                    if (targetIds.includes(targetCtvId)) {
-                        commenters.push(i);
+                    if (targetPositions.includes(targetPosition)) {
+                        // Trả về ID của CTV ở vị trí i
+                        commenters.push(ctvData[i].id);
                     }
                 }
                 return commenters;
